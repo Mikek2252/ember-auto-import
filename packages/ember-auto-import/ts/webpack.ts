@@ -17,6 +17,7 @@ registerHelper('join', function (list, connector) {
 });
 
 const entryTemplate = compile(`
+import { registerWaiter } from '@ember/test';
 if (typeof document !== 'undefined') {
   {{#if publicAssetURL}}
   __webpack_public_path__ = '{{js-string-escape publicAssetURL}}';
@@ -38,12 +39,26 @@ if (typeof document !== 'undefined') {
 module.exports = (function(){
   var d = _eai_d;
   var r = _eai_r;
+  var outstandingRequests = 0;
+
+  registerWaiter(function() {
+    return outstandingRequests === 0;
+  });
+
   window.emberAutoImportDynamic = function(specifier) {
+    var importPromise;
     if (arguments.length === 1) {
-      return r('_eai_dyn_' + specifier);
+      importPromise = r('_eai_dyn_' + specifier);
     } else {
-      return r('_eai_dynt_' + specifier)(Array.prototype.slice.call(arguments, 1))
+      importPromise = r('_eai_dynt_' + specifier)(Array.prototype.slice.call(arguments, 1))
     }
+    return importPromise.then(function(mod){
+      outstandingRequests--;
+      return mod;
+    }, function(err) {
+      outstandingRequests--;
+      throw err;
+    });
   };
   {{#each staticImports as |module|}}
     d('{{js-string-escape module.specifier}}', [], function() { return require('{{js-string-escape module.entrypoint}}'); });
